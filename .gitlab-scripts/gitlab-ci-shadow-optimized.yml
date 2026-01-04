@@ -1,0 +1,82 @@
+stages:
+  - shadow-file-generation
+
+generate-shadow-file:
+  stage: shadow-file-generation
+  image: python:3.11-slim
+  resource_group: shadow-file-generation-lock
+  
+  # === Execution Rules ===
+  # ✅ feature -> develop (OK: 3のルールで実行)
+  # ✅ develop -> main (OK: 2のルールで develop 自体の変更として実行。MRパイプラインはターゲットがmainなので3に合致せず重複実行なし)
+  # 🚫 feature -> feature (SKIP: ターゲットがdevelopでないため実行なし)
+  # ✅ main, develop への直接プッシュ (OK: 1, 2のルールで実行)
+  rules:
+    # 1. Main Branch: Always run to maintain Golden Master
+    - if: $CI_COMMIT_BRANCH == "main"
+    # 2. Develop Branches: Always run to maintain Project Master
+    - if: $CI_COMMIT_BRANCH =~ /^develop_.*$/
+    # 3. Merge Requests: Run ONLY if targeting a develop branch
+    #    (This covers Feature branches -> Develop, but ignores Feature -> Feature)
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME =~ /^develop_.*$/
+
+  before_script:
+    # 1. Install git and pip/dependencies
+    - apt-get update && apt-get install -y git
+    - pip install "markitdown[xlsx]" xlrd msoffcrypto-tool
+
+    # === Commit Info Logging ===
+    - echo "=================================================="
+    - echo "Pipeline Commit Info"
+    - echo "=================================================="
+    - echo "Current Commit SHA    : ${CI_COMMIT_SHA}"
+    - echo "Current Commit Author : ${CI_COMMIT_AUTHOR}"
+    - echo "Current Commit Message: ${CI_COMMIT_MESSAGE}"
+    - echo "Pipeline Source       : ${CI_PIPELINE_SOURCE}"
+    - echo "--------------------------------------------------"
+    - |
+      if [ -n "$CI_COMMIT_BEFORE_SHA" ] && [ "$CI_COMMIT_BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+        echo "Previous Commit SHA   : ${CI_COMMIT_BEFORE_SHA}"
+        git show -s --format="Previous Commit Author: %an%nPrevious Commit Message: %s" ${CI_COMMIT_BEFORE_SHA} || echo "Previous commit details not available (shallow clone?)"
+      else
+        echo "Previous Commit SHA   : (Initial commit or not set)"
+      fi
+    - echo "=================================================="
+
+  script:
+    # 2. Run the shadow generation script
+    - python .gitlab-scripts/generate_shadow.py
+
+    # 3. Check for changes and push
+    - git config --global user.email "${GITLAB_USER_EMAIL}"
+    - git config --global user.name "${GITLAB_USER_NAME}"
+    
+    # Add all changes (shadow files are generated in place)
+    - git add .
+    
+    # Check if there are changes to commit
+    - |
+      if git diff --cached --quiet; then
+        echo "No changes in shadow files detected."
+      else
+        echo "Changes detected. Committing and pushing..."
+        # Create a safe commit message file to handle special characters
+        printf "Update shadow files [skip ci]\n\nSource Commit: %s\n%s" "${CI_COMMIT_SHORT_SHA}" "${CI_COMMIT_TITLE}" > commit_message.txt
+        git commit -F commit_message.txt
+        
+        # === LOGIC TO DETERMINE PUSH TARGET ===
+        if [ "$CI_PIPELINE_SOURCE" == "merge_request_event" ]; then
+          # For MR pipelines, HEAD is detached. We must push explicitly to the Source Branch.
+          TARGET_REF="$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME"
+          echo "Pipeline triggered by Merge Request."
+          echo "Pushing to Source Branch: $TARGET_REF"
+        else
+          # For standard Branch pipelines (main, develop_*)
+          TARGET_REF="$CI_COMMIT_REF_NAME"
+          echo "Pipeline triggered by Branch update."
+          echo "Pushing to Ref: $TARGET_REF"
+        fi
+        
+        # Push to the repository using CI_JOB_TOKEN
+        git push http://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab-server/${CI_PROJECT_PATH}.git HEAD:${TARGET_REF}
+      fi

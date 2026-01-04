@@ -1,0 +1,73 @@
+# --- OS / System ---
+Thumbs.db
+Desktop.ini
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# --- Editor / IDE ---
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.sublime-workspace
+*.sublime-project
+.idea/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+venv/
+.venv/
+env/
+.env/
+
+# Testing / Quality
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# --- Docker ---
+docker-compose.override.yml
+.docker/
+
+# --- Project Specific (Secrets/Data/Logs) ---
+# Docker services data/config (secrets & persistent data)
+config/
+data/
+logs/
+
+# Sensitive Information
+.gitlab-scripts/passwords.txt
+.env
+
+# GitLab Runner artifacts
+runner-config/.runner_system_id
+runner-config/config.toml
+
+# Temporary directories created by README instructions
+dist-repo/
