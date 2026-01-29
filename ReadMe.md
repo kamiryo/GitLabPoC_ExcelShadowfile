@@ -135,6 +135,7 @@ PoC 2 では、設計書（Excel）が日々更新される **Design Repo** に�
 3.  **CI 変数の設定**:
     - **Settings > CI/CD > Variables** にて以下を設定します:
         - `SOURCE_REPO_URL`: Design Repo のクローン用 URL (例: `https://gitlab.example.com/group/design-repo.git`)。
+        - `SOURCE_PROJECT_ID`: Design Repo のプロジェクト ID (例: `12345`)。Open な MR を検出するために使用します。
         - `ACCESS_TOKEN`: アクセストークン。Design Repo への Read 権限と、Shadow Repo への Write 権限が必要です。
           - ※ CI ジョブ内で `git clone` や `git push` を行うために使用します。セキュリティのため Mask して登録してください。
 

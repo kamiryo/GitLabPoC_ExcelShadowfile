@@ -19,12 +19,64 @@ SHADOW_METADATA_FILE = "shadow_metadata.json"
 LOCK_FILE = "shadow_lock.lock"
 LOCK_TIMEOUT_SECONDS = 600
 
+import requests
+
+def get_open_mr_branches():
+    """
+    Fetches source branches of OPEN Merge Requests from GitLab API.
+    Requires SOURCE_PROJECT_ID and ACCESS_TOKEN.
+    """
+    project_id = os.environ.get("SOURCE_PROJECT_ID")
+    token = os.environ.get("ACCESS_TOKEN")
+    api_url = os.environ.get("CI_API_V4_URL", "https://gitlab.com/api/v4")
+    
+    if not project_id or not token:
+        print("WARNING: SOURCE_PROJECT_ID or ACCESS_TOKEN not set. Cannot fetch MRs via API.")
+        return []
+
+    print(f"Fetching Open MRs for Project ID {project_id}...")
+    headers = {"PRIVATE-TOKEN": token}
+    branches = set()
+    
+    try:
+        # Pagination handling could be added, but for PoC we fetch page 1 (default 20->100 generally sufficient or need per_page)
+        resp = requests.get(f"{api_url}/projects/{project_id}/merge_requests?state=opened&per_page=100", headers=headers)
+        if resp.status_code == 200:
+            mrs = resp.json()
+            for mr in mrs:
+                source_branch = mr.get("source_branch")
+                if source_branch:
+                    branches.add(source_branch)
+            print(f"Found {len(branches)} branches from Open MRs.")
+        else:
+            print(f"Failed to fetch MRs: {resp.status_code} {resp.text}")
+    except Exception as e:
+        print(f"API Request failed: {e}")
+        
+    return list(branches)
+
 def get_target_branches():
+    # 1. Configured Targets (Env Var)
     targets_env = os.environ.get("TARGET_BRANCHES")
-    if targets_env:
-        return [b.strip() for b in targets_env.split(",") if b.strip()]
-    print("WARNING: TARGET_BRANCHES not set. Defaulting to 'main'.")
-    return ['main']
+    manual_targets = [b.strip() for b in targets_env.split(",") if b.strip()] if targets_env else []
+    
+    # 2. Always include 'main' (unless explicitly excluded? No, usually required)
+    base_targets = {'main'}
+    
+    # 3. Open MRs (Auto-detection)
+    mr_targets = get_open_mr_branches()
+    
+    # Combine
+    all_targets = base_targets.union(manual_targets).union(mr_targets)
+    
+    # Filter: Only branches that actually exist in our local mirror (Origin)
+    # This prevents trying to shadow a branch that hasn't been mirrored yet or doesn't exist.
+    # But checking remote branches is expensive? No, we can list them.
+    # For PoC, let's just return the list. `process_branch` handles missing branches gracefully.
+    
+    sorted_targets = sorted(list(all_targets))
+    print(f"Final Target Branches: {sorted_targets}")
+    return sorted_targets
 
 def check_remote_lock(shadow_branch, runner_cwd):
     try:
