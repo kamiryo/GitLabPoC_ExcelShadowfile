@@ -1,0 +1,38 @@
+
+image: python:3.9
+
+stages:
+  - sync-and-shadow
+
+variables:
+  # Configure these in GitLab CI Variables
+  # SOURCE_REPO_URL: "https://gitlab.com/username/design-repo.git"
+  # ACCESS_TOKEN: "GLPAT-..." (mask this!)
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  paths:
+    - .cache/pip
+
+sync-job:
+  stage: sync-and-shadow
+  resource_group: shadow_generation # Prevents concurrent runs
+  before_script:
+    - pip install markitdown msoffcrypto-tool requests
+    # Configure git credentials using the CI token
+    - git config --global user.email "ci-runner@example.com"
+    - git config --global user.name "CI Runner"
+    # Construct URL with auth
+    # For PoC, assuming HTTPS with token
+    # - export SOURCE_REPO_URL_AUTH="https://oauth2:${ACCESS_TOKEN}@${SOURCE_REPO_URL_NO_PROTOCOL}"
+
+  script:
+    - export PYTHONPATH=$PYTHONPATH:$(pwd)/scripts
+    # 1. Mirroring Phase (Source -> Shadow Repo)
+    - python scripts/mirror_design_repo.py
+    # 2. Shadow Generation Phase (Shadow Repo -> Shadow Branches)
+    - python scripts/update_shadow_branches.py
+  
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"
