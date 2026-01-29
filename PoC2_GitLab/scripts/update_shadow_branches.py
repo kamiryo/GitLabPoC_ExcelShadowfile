@@ -55,24 +55,74 @@ def get_open_mr_branches():
         
     return list(branches)
 
+def get_closed_mr_branches(open_branches):
+    """
+    Identifies shadow branches that exist but correspond to a branch that is no longer in the Open list.
+    We check remote shadow branches 'origin/*_shadow' and see if the base branch is missing from 'open_branches' AND 'main'.
+    """
+    print("Checking for closed branches to finalize...")
+    # Get all remote shadow branches
+    output = utils.run_git(['branch', '-r'])
+    shadow_branches = []
+    for line in output.splitlines():
+        line = line.strip()
+        if '_shadow' in line and 'origin/' in line and not ('->' in line):
+            branch = line.replace('origin/', '').replace('_shadow', '')
+            shadow_branches.append(branch)
+            
+    closed_targets = []
+    active_set = set(open_branches)
+    active_set.add('main')
+    
+    for base_branch in shadow_branches:
+        if base_branch not in active_set:
+            # It exists as a shadow, but is not in Open MRs or Main.
+            # It might be closed/merged.
+            # We should check if the base branch still exists in Origin (Mirrored)?
+            # If it exists, we update it one last time (maybe it was just merged and source branch pending deletion).
+            # If it does NOT exist (source deleted), we can't update HEAD.
+            # But the requirement is "Specially update HEAD".
+            # If the source branch is gone, we can't get HEAD. 
+            # We assume "Closed" means "Merged but branch ref might still exist" OR "We treat the last known state as final".
+            # Let's check if 'origin/base_branch' exists.
+            
+            try:
+                utils.run_git(['rev-parse', f'origin/{base_branch}'], check=False)
+                # It exists! So we include it as a target.
+                # The process_branch logic will check metadata. 
+                # If metadata matches, it skips. 
+                # BUT user said "Specially update HEAD". 
+                # This implies even if it matches, maybe we force? 
+                # Or maybe just ensuring it IS up to date is enough. 
+                # "Previously it was open, now closed... update HEAD". 
+                # If we just treat it as a target, standard logic ensures it matches HEAD.
+                # If it matches HEAD, it is updated.
+                print(f"Found closed/merged candidate: {base_branch}")
+                closed_targets.append(base_branch)
+            except Exception:
+                print(f"Shadow exists for {base_branch} but source is gone. Skipping.")
+    
+    return closed_targets
+
 def get_target_branches():
     # 1. Configured Targets (Env Var)
     targets_env = os.environ.get("TARGET_BRANCHES")
     manual_targets = [b.strip() for b in targets_env.split(",") if b.strip()] if targets_env else []
     
-    # 2. Always include 'main' (unless explicitly excluded? No, usually required)
+    # 2. Always include 'main'
     base_targets = {'main'}
     
     # 3. Open MRs (Auto-detection)
     mr_targets = get_open_mr_branches()
     
-    # Combine
-    all_targets = base_targets.union(manual_targets).union(mr_targets)
+    # 4. Closed Branches (Final Update)
+    # We pass the list of currently ACTIVE branches (Base + MRs + Manual)
+    # Any shadow that exists but is NOT in this list is a candidate for "Closed".
+    active_branches = base_targets.union(manual_targets).union(mr_targets)
+    closed_targets = get_closed_mr_branches(list(active_branches))
     
-    # Filter: Only branches that actually exist in our local mirror (Origin)
-    # This prevents trying to shadow a branch that hasn't been mirrored yet or doesn't exist.
-    # But checking remote branches is expensive? No, we can list them.
-    # For PoC, let's just return the list. `process_branch` handles missing branches gracefully.
+    # Combine
+    all_targets = active_branches.union(closed_targets)
     
     sorted_targets = sorted(list(all_targets))
     print(f"Final Target Branches: {sorted_targets}")
