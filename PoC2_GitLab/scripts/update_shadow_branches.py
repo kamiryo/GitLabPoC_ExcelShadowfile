@@ -104,25 +104,92 @@ def get_closed_mr_branches(open_branches):
     
     return closed_targets
 
+STATE_FILE = "previous_open_branches.txt"
+STATE_BRANCH = "sys/ci" # Branch to store the state file
+
+def get_previous_open_branches(runner_cwd):
+    """
+    Reads the list of open branches from the previous run.
+    Expects STATE_FILE to be in the current workspace (checked out sys/ci or similar).
+    """
+    # We need to fetch/checkout the state file from STATE_BRANCH
+    try:
+        utils.run_git(['fetch', 'origin', STATE_BRANCH], cwd=runner_cwd, check=False)
+        content = utils.run_git(['show', f'origin/{STATE_BRANCH}:{STATE_FILE}'], cwd=runner_cwd)
+        if content:
+            return set(line.strip() for line in content.splitlines() if line.strip())
+    except Exception:
+        pass
+    return set()
+
+def save_current_open_branches(open_branches, runner_cwd):
+    """
+    Saves the current list of open branches to STATE_FILE on STATE_BRANCH.
+    """
+    print("Saving current Open MR list to state file...")
+    state_ws = Path("state_workspace")
+    if state_ws.exists(): shutil.rmtree(state_ws)
+    
+    try:
+        repo_url = utils.run_git(['config', '--get', 'remote.origin.url'], cwd=runner_cwd)
+        # Clone STATE_BRANCH
+        utils.run_git(['clone', '--depth', '1', '-b', STATE_BRANCH, repo_url, str(state_ws)], cwd=".")
+        
+        # Write file
+        (state_ws / STATE_FILE).write_text("\n".join(sorted(open_branches)))
+        
+        utils.configure_git_user()
+        utils.run_git(['add', STATE_FILE], cwd=state_ws)
+        
+        # Commit & Push
+        # Check if changed
+        status = utils.run_git(['status', '--porcelain'], cwd=state_ws)
+        if status:
+            utils.run_git(['commit', '-m', 'Update previous_open_branches.txt [skip ci]'], cwd=state_ws)
+            utils.push_changes(STATE_BRANCH, cwd=state_ws)
+            print("State file updated.")
+        else:
+            print("State file unchanged.")
+            
+    except Exception as e:
+        print(f"Failed to save state file: {e}")
+    
+    if state_ws.exists(): shutil.rmtree(state_ws)
+
 def get_target_branches():
-    # 1. Configured Targets (Env Var)
+    runner_cwd = Path.cwd()
+
+    # 1. Configured Targets
     targets_env = os.environ.get("TARGET_BRANCHES")
     manual_targets = [b.strip() for b in targets_env.split(",") if b.strip()] if targets_env else []
     
-    # 2. Always include 'main'
+    # 2. Base Targets
     base_targets = {'main'}
     
-    # 3. Open MRs (Auto-detection)
-    mr_targets = get_open_mr_branches()
+    # 3. Current Open MRs
+    current_open_mrs = set(get_open_mr_branches())
     
-    # 4. Closed Branches (Final Update)
-    # We pass the list of currently ACTIVE branches (Base + MRs + Manual)
-    # Any shadow that exists but is NOT in this list is a candidate for "Closed".
-    active_branches = base_targets.union(manual_targets).union(mr_targets)
-    closed_targets = get_closed_mr_branches(list(active_branches))
+    # 4. Detect Closed Branches (Previously Open - Currently Open)
+    previous_open_mrs = get_previous_open_branches(runner_cwd)
     
-    # Combine
-    all_targets = active_branches.union(closed_targets)
+    # Identify branches that were open but are NOT open now
+    newly_closed = previous_open_mrs - current_open_mrs
+    
+    # But we should exclude branches that are deleted? 
+    # If a branch is closed AND deleted, we can't shadow it.
+    # process_branch handles "clone failed" gracefully.
+    
+    print(f"Previous Open: {previous_open_mrs}")
+    print(f"Current Open: {current_open_mrs}")
+    print(f"Newly Closed Candidates: {newly_closed}")
+    
+    # Combine all targets
+    all_targets = base_targets.union(manual_targets).union(current_open_mrs).union(newly_closed)
+    
+    # Save State for Next Run
+    # The state should be the "Current Open MRs" (plus maybe manual?)
+    # Strictly, "previous run's open branches" for next time is just current_open_mrs.
+    save_current_open_branches(list(current_open_mrs), runner_cwd)
     
     sorted_targets = sorted(list(all_targets))
     print(f"Final Target Branches: {sorted_targets}")
@@ -132,10 +199,11 @@ def check_remote_lock(shadow_branch, runner_cwd):
     try:
         utils.run_git(['fetch', 'origin', shadow_branch], cwd=runner_cwd, check=False)
         lock_content = utils.run_git(['show', f'origin/{shadow_branch}:{LOCK_FILE}'], cwd=runner_cwd)
-        if not lock_content: return False
-        lock_time = float(lock_content.strip())
-        if time.time() - lock_time > LOCK_TIMEOUT_SECONDS: return False
-        return True
+        if lock_content:
+            # User requested NOT to timeout, just respect existence.
+            print(f"Branch {shadow_branch} is LOCKED. Skipping.")
+            return True
+        return False
     except Exception:
         return False
 
