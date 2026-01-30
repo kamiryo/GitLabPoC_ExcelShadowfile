@@ -1,0 +1,9 @@
+# Switch to Alpine based image which usually has newer packages
+FROM gitlab/gitlab-runner:alpine
+
+# Install Python 3, Pip, and Git (Alpine 3.18+ usually has Python 3.11+)
+RUN apk add --no-cache python3 py3-pip git
+
+# Install markitdown and dependencies for legacy/encrypted excel
+# --break-system-packages is needed on Alpine 3.19+ (PEP 668)
+RUN python3 -m pip install "markitdown[xlsx]" xlrd msoffcrypto-tool --break-system-packages
