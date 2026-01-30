@@ -1,0 +1,6 @@
+# Shadowファイル(.shadow)の設定
+# コンフリクト時は常にローカル(ours)を優先し、エラーを出さない
+*.shadow merge=ours
+
+# GitLab上で「生成されたファイル」として扱い、Diffを折りたたみ、統計から除外する
+*.shadow linguist-generated
