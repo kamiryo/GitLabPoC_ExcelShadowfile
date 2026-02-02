@@ -1,5 +1,5 @@
 
-image: python:3.9
+image: python:3.11
 
 stages:
   - sync-and-shadow
@@ -18,7 +18,7 @@ sync-job:
   stage: sync-and-shadow
   resource_group: shadow_generation # Prevents concurrent runs
   before_script:
-    - pip install markitdown msoffcrypto-tool requests
+    - pip install "markitdown[xlsx]" msoffcrypto-tool requests
     # Configure git credentials using the CI token
     - git config --global user.email "ci-runner@example.com"
     - git config --global user.name "CI Runner"
