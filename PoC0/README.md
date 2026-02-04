@@ -1,49 +1,34 @@
-# PoC0: ローカル GitLab & Runner 環境
+# PoC0: GitLab Local Docker Environment
 
-このディレクトリには、DockerベースのGitLab Runnerを使用したローカルGitLabインスタンスを実行するために必要な設定とスクリプトが含まれています。
+このディレクトリには、Windows 上で GitLab CE と GitLab Runner をローカル実行するための `docker compose` 設定が含まれています。
 
-## クイックスタート (WSL)
+### 前提条件 (Windows)
+-   **Docker Desktop for Windows** がインストールされ、実行されていること。
+-   **Git** がインストールされていること。
+-   **PowerShell** が利用可能であること。
 
-1.  **サービスの起動**:
+### 導入手順
+
+1.  **GitLab 環境の起動**:
+    このディレクトリ (`PoC0`) で PowerShell を開き、以下を実行します:
     ```powershell
-    wsl bash -c "cd /mnt/c/GoogleAntigravity/ExcelShadow/PoC0 && docker compose up -d"
+    docker compose up -d
     ```
-2.  **初期化の待機**:
-    GitLabの起動には数分かかります。`http://localhost` にアクセスできるまでお待ちください。
-3.  **Runnerの登録**:
-    修正されたセットアップスクリプトを使用して自動的に登録できます。
+    `gitlab-server` (GitLab CE) と `gitlab-runner` が起動します。GitLab の起動には数分（2〜5分）かかります。
+
+2.  **GitLab Runner の登録**:
+    セットアップスクリプトを実行して、ローカルの GitLab インスタンスに Runner を自動登録します。
     ```powershell
-    wsl bash -c "cd /mnt/c/GoogleAntigravity/ExcelShadow/PoC0 && ./setup_gitlab_runner.sh"
+    .\setup_gitlab_runner.ps1
     ```
-    実行後、GitLabの管理画面 (CI/CD > Runners) で `Docker-Runner-PoC` が登録されていることを確認してください。
+    (Bash 環境がある場合は、旧来の `setup_gitlab_runner.sh` も利用可能です)
 
-## ファイル説明
-
-| ファイル/ディレクトリ | 用途・説明 |
-| :--- | :--- |
-| `docker-compose.yml` | **構成定義**: GitLab本体とRunnerを起動するための設定ファイル。 |
-| `runner-config/` | **Docker設定**: Runnerが使用するカスタムDockerイメージ（Python環境など）の定義。 |
-| `setup_gitlab_runner.sh`| **セットアップ**: Runnerのトークン生成から登録までを一括で行う自動化スクリプト。 |
-| `generate_runner_token.sh` | **補助ツール**: トークン生成のみを行うスクリプト（デバッグ用）。 |
-| `gen_token.rb` | **内部ファイル**: スクリプトが内部で使用するRubyコード（一時ファイル）。 |
-| `start_and_verify.sh` | **補助ツール**: サービスの起動とヘルスチェックを行うスクリプト。 |
-
-## アクセス情報
-*   **GitLab URL**: http://localhost
-*   **ユーザー**: `root`
-*   **パスワード**:
-    ```powershell
-    wsl docker exec gitlab-server grep 'Password:' /etc/gitlab/initial_root_password
-    ```
-
-## 環境の削除 (Cleanup)
-
-PoC環境を完全に削除（コンテナ、ネットワーク、および**全てのデータ**を含むボリュームの削除）するには、以下のコマンドを実行してください。
-
-```powershell
-wsl bash -c "cd /mnt/c/GoogleAntigravity/ExcelShadow/PoC0 && docker compose down -v"
-```
-
-> [!WARNING]
-> `-v` オプションを付けると、GitLabのリポジトリデータやRunnerの設定など、ボリュームに保存された全てのデータが**永久に失われます**。
-
+3.  **GitLab へのログイン**:
+    -   ブラウザで [http://localhost](http://localhost) にアクセスします。
+    -   **ユーザー名**: `root`
+    -   **パスワード**:
+        初期ルートパスワードを確認するには以下を実行します:
+        ```powershell
+        docker compose exec gitlab-server grep 'Password:' /etc/gitlab/initial_root_password
+        ```
+    -   初回ログイン後、パスワードを変更してください。

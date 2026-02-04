@@ -19,6 +19,9 @@ services:
       - "2222:22"
     environment:
       GITLAB_OMNIBUS_CONFIG: |
+        # NOTE: Windowsホストからアクセスしやすくするため、external_urlは 'localhost' に設定しています。
+        # これによりRunnerへ渡される CI_REPOSITORY_URL も 'localhost' となります。
+        # そのため、コンテナ内で実行されるスクリプトでは、接続のために 'localhost' を 'gitlab-server' に置換する必要があります。
         external_url 'http://localhost'
     volumes:
       - gitlab-config:/etc/gitlab

@@ -19,6 +19,9 @@ SHADOW_METADATA_FILE = "shadow_metadata.json"
 LOCK_FILE = "shadow_lock.lock"
 LOCK_TIMEOUT_SECONDS = 600
 
+# Fix Origin URL for Pushing (Access Token Support)
+utils.update_origin_url()
+
 import requests
 
 def get_open_mr_branches():
@@ -115,7 +118,7 @@ def get_previous_open_branches(runner_cwd):
     # We need to fetch/checkout the state file from STATE_BRANCH
     try:
         utils.run_git(['fetch', 'origin', STATE_BRANCH], cwd=runner_cwd, check=False)
-        content = utils.run_git(['show', f'origin/{STATE_BRANCH}:{STATE_FILE}'], cwd=runner_cwd)
+        content = utils.run_git(['show', f'origin/{STATE_BRANCH}:{STATE_FILE}'], cwd=runner_cwd, check=False)
         if content:
             return set(line.strip() for line in content.splitlines() if line.strip())
     except Exception:
@@ -131,7 +134,7 @@ def save_current_open_branches(open_branches, runner_cwd):
     if state_ws.exists(): shutil.rmtree(state_ws)
     
     try:
-        repo_url = utils.run_git(['config', '--get', 'remote.origin.url'], cwd=runner_cwd)
+        repo_url = utils.get_authenticated_repo_url(runner_cwd)
         # Clone STATE_BRANCH
         utils.run_git(['clone', '--depth', '1', '-b', STATE_BRANCH, repo_url, str(state_ws)], cwd=".")
         
@@ -198,7 +201,7 @@ def get_target_branches():
 def check_remote_lock(shadow_branch, runner_cwd):
     try:
         utils.run_git(['fetch', 'origin', shadow_branch], cwd=runner_cwd, check=False)
-        lock_content = utils.run_git(['show', f'origin/{shadow_branch}:{LOCK_FILE}'], cwd=runner_cwd)
+        lock_content = utils.run_git(['show', f'origin/{shadow_branch}:{LOCK_FILE}'], cwd=runner_cwd, check=False)
         if lock_content:
             # User requested NOT to timeout, just respect existence.
             print(f"Branch {shadow_branch} is LOCKED. Skipping.")
@@ -212,7 +215,7 @@ def push_lock_file(branch_shadow, runner_cwd):
     lock_ws = Path("lock_workspace")
     if lock_ws.exists(): shutil.rmtree(lock_ws)
     try:
-        repo_url = utils.run_git(['config', '--get', 'remote.origin.url'], cwd=runner_cwd)
+        repo_url = utils.get_authenticated_repo_url(runner_cwd)
         utils.run_git(['clone', '--depth', '1', '-b', branch_shadow, repo_url, str(lock_ws)], cwd=".")
     except:
         lock_ws.mkdir()
@@ -248,7 +251,7 @@ def process_branch(branch_name):
     if workspace.exists(): shutil.rmtree(workspace)
     
     # We clone from CURRENT REPO (Origin)
-    repo_url = utils.run_git(['config', '--get', 'remote.origin.url'], cwd=runner_cwd)
+    repo_url = utils.get_authenticated_repo_url(runner_cwd)
     try:
         utils.run_git(['clone', '--depth', '1', '-b', branch_name, repo_url, str(workspace)])
     except Exception as e:

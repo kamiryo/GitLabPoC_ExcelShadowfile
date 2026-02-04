@@ -12,6 +12,9 @@ def mirror_repository():
         sys.exit(1)
 
     print(f"--- Starting Mirroring from {SOURCE_REPO_URL} ---")
+    
+    # Fix Origin URL for Pushing (Access Token Support)
+    utils.update_origin_url()
 
     # Strategy:
     # 1. Fetch all branches from Source

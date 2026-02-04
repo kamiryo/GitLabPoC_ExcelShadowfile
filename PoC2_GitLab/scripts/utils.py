@@ -50,5 +50,50 @@ def checkout_branch(branch, cwd=None, create=False):
     args = ['checkout']
     if create:
         args.append('-b')
-    args.append(branch)
-    run_git(args, cwd=cwd)
+
+def get_authenticated_repo_url(cwd=None):
+    """
+    Returns the repository URL with:
+    1. 'localhost' replaced by 'gitlab-server' (for Docker networking).
+    2. ACCESS_TOKEN injected if available (for Push permissions).
+    """
+    token = os.environ.get("ACCESS_TOKEN")
+    ci_url = os.environ.get("CI_REPOSITORY_URL")
+    
+    url = ci_url
+    if not url:
+        # Fallback to current config
+        try:
+            url = run_git(['config', '--get', 'remote.origin.url'], cwd=cwd)
+        except:
+            pass
+            
+    if not url:
+        return None
+
+    # Fix localhost -> gitlab-server
+    url = url.replace("localhost", "gitlab-server")
+    
+    # Inject Access Token if available
+    if token:
+        # Format: https://gitlab-ci-token:TOKEN@host/path.git
+        # We want: http://oauth2:ACCESS_TOKEN@host/path.git
+        if "@" in url:
+            # Strip existing auth
+            protocol, rest = url.split("://", 1)
+            host_path = rest.split("@", 1)[-1]
+            url = f"{protocol}://oauth2:{token}@{host_path}"
+        else:
+            # Just insert
+            protocol, rest = url.split("://", 1)
+            url = f"{protocol}://oauth2:{token}@{rest}"
+            
+    return url
+
+def update_origin_url(cwd=None):
+    """Updates the 'origin' remote to use the authenticated URL (for Pushing)."""
+    url = get_authenticated_repo_url(cwd)
+    if url:
+        print(f"DEBUG: Updating origin to authenticated URL...")
+        # Don't print the actual URL to avoid leaking tokens in logs
+        run_git(['remote', 'set-url', 'origin', url], cwd=cwd, check=False)
