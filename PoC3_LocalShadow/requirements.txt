@@ -1,2 +1,6 @@
-markitdown
+markitdown[xlsx]
 msoffcrypto-tool
+
+python-dotenv
+
+xlrd

@@ -6,7 +6,7 @@ GitLab CIを使わず、ローカルPC上で直接実行することを想定し
 ## 特徴
 
 - 指定したディレクトリ（デフォルト: `doc`）以下のExcelファイルを再帰的に検索します。
-- `passwords.txt` に記載されたパスワードリストを使って、暗号化されたExcelファイルの復号を試みます。
+- `.env` ファイル (`SHADOW_PASSWORDS`) に記載されたパスワードリストを使って、暗号化されたExcelファイルの復号を試みます。
 - 変換結果は元のExcelファイルと同じ場所に `.<filename>.shadow` という名前で保存されます。
 
 ## セットアップ手順
@@ -22,17 +22,24 @@ GitLab CIを使わず、ローカルPC上で直接実行することを想定し
    pip install -r requirements.txt
    ```
 
-3. **パスワードリストの準備（任意）**
-   `passwords.txt` を作成し、考えられるパスワードを1行に1つずつ記述してください。  
-   （サンプルとして `passwords.txt.sample` があります）
+3. **パスワード設定（任意・推奨）**
+   `.env` ファイルを作成し、暗号化Excel用のパスワードを設定します。
+   （サンプルとして `.env.sample` があります）
    
-   - **複数設定**: 1行につき1つのパスワードを書くことで、複数のパスワードを順に試行します。
-   - **ファイルなし**: `passwords.txt` がなくてもツールは動作します（暗号化ファイルはスキップされます）。
-
    ```powershell
-   copy passwords.txt.sample passwords.txt
-   # その後、passwords.txt をエディタで編集して実際のパスワードを追記してください
+   copy .env.sample .env
    ```
+
+   `.env` ファイルをテキストエディタで開き、`SHADOW_PASSWORDS` にカンマ区切りでパスワードを記述します。
+
+   ```text
+   SHADOW_PASSWORDS=password,123456,admin,secret_key
+   ```
+   
+   ※ `.env` ファイルは `.gitignore` に含まれているため、誤ってGitにコミットされるリスクが低減されます。
+
+   > [!TIP]
+   > `.env` ファイルは通常 `PoC3_LocalShadow` 直下に置きますが、`tools/generate_shadow_recursive.py` と同じ場所（`tools` フォルダ内）に置いても読み込まれます。
 
 ## 使い方
 
@@ -60,6 +67,26 @@ Found 2 Excel files in 'doc'.
 Processing: C:\googleantigravity\Poc3_LocalShadow\doc\Design.xlsx
   Generated Shadow: .Design.xlsx.shadow
 ```
+
+## オンライン（インターネット接続あり）での実行
+
+## オンライン（インターネット接続あり）での実行
+
+**簡単実行スクリプト** (`run_online.bat`) を用意しました。
+これを使うと、必要なライブラリのインストールからツール実行までを一括で行えます。
+
+```powershell
+cd PoC3_LocalShadow
+
+# ツールを実行 (対象フォルダを指定)
+.\run_online.bat "C:\Path\To\Your\ExcelDocs"
+```
+
+※ 初回実行時に `pip install` が自動的に行われます。2回目以降も、ライブラリの不足があれば自動補完します。
+
+> [!NOTE]
+> `ModuleNotFoundError: No module named 'msoffcrypto'` などのエラーが出る場合は、上記の `pip install` が完了していないか、失敗しています。必ず最初に実行してください。
+
 
 ## エアギャップ環境（インターネット接続なし）での実行
 

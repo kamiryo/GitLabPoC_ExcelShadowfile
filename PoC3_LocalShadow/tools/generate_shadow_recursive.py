@@ -8,36 +8,42 @@ from pathlib import Path
 from markitdown import MarkItDown
 
 
-def load_passwords(password_file="passwords.txt"):
-    """Load passwords from file in script dir or current dir."""
-    candidates = []
-    # Check script dir
-    script_dir = Path(__file__).parent.parent # Assuming tools/script.py, so up one level usually? Or just script dir. 
-    # Let's check: script is in tools/, passwords probably in root of PoC3.
-    # But user might run from anywhere.
-    # Let's try: 1. ENV VAR, 2. Current Dir, 3. Script Parent Dir
-    
-    search_paths = [
-        Path.cwd() / password_file,
-        Path(__file__).parent / password_file,
-        Path(__file__).parent.parent / password_file
-    ]
-    
-    for path in search_paths:
-        if path.exists():
-            print(f"Loading passwords from: {path}")
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    candidates = [line.strip() for line in f if line.strip()]
-                break
-            except Exception as e:
-                print(f"Error reading {path}: {e}", file=sys.stderr)
-                
-    if not candidates:
-        print("Warning: passwords.txt not found. Encrypted files will be skipped.", file=sys.stderr)
-    return candidates
+from dotenv import load_dotenv, find_dotenv
+
+# Load environment variables from .env file
+# Priority 1: .env in the same directory as this script
+script_env = Path(__file__).parent / ".env"
+if script_env.exists():
+    load_dotenv(script_env)
+
+# Priority 2: Standard search from CWD up
+load_dotenv(find_dotenv())
+
+def load_passwords():
+    """Load passwords from SHADOW_PASSWORDS env var (comma separated)."""
+    raw = os.environ.get("SHADOW_PASSWORDS", "")
+    if not raw:
+        return []
+    return [p.strip() for p in raw.split(",") if p.strip()]
 
 PASSWORDS = load_passwords()
+
+def decrypt_file(file_path, password):
+    """
+    Attempt to decrypt an Office file with a password.
+    Returns: A file-like object (io.BytesIO) of the decrypted content, or None on failure.
+    """
+    try:
+        decrypted = io.BytesIO()
+        with open(file_path, "rb") as f:
+            office_file = msoffcrypto.OfficeFile(f)
+            office_file.load_key(password=password)
+            office_file.decrypt(decrypted)
+        decrypted.seek(0)
+        return decrypted
+    except Exception:
+        # Decryption failed (wrong password or not encrypted)
+        return None
 
 def get_target_files(root_dir="doc"):
     """
@@ -86,6 +92,7 @@ def main():
                 result = md.convert(str(excel_path))
             except Exception as e_convert:
                 # Password check
+                print(f"  [Debug] Direct conversion failed: {e_convert}", file=sys.stderr)
                 # print(f"Direct conversion failed for {excel_path}. Checking passwords...", file=sys.stderr)
                 success = False
                 for pwd in PASSWORDS:
